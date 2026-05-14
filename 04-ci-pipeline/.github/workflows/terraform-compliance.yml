@@ -1,0 +1,147 @@
+name: Terraform Compliance
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 */6 * * *"   # drift check every 6 hours
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+  issues: write
+
+env:
+  TF_VERSION: "1.8.0"
+  CONFTEST_VERSION: "0.46.0"
+  AWS_REGION: eu-central-1
+
+jobs:
+
+  # ── On every PR: plan + policy check ─────────────────────────────────────
+
+  policy-check:
+    name: Plan + Policy Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install Conftest
+        run: |
+          curl -Lo conftest.tar.gz \
+            "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+          tar xzf conftest.tar.gz
+          sudo mv conftest /usr/local/bin/
+
+      - name: Terraform Init
+        run: terraform init -input=false
+        working-directory: 01-provision
+
+      - name: Terraform Plan
+        run: terraform plan -out plan.bin -input=false -var="allowed_ssh_cidr=${{ secrets.ALLOWED_SSH_CIDR }}"
+        working-directory: 01-provision
+
+      - name: Export plan to JSON
+        run: terraform show -json plan.bin > plan.json
+        working-directory: 01-provision
+
+      - name: Run OPA policy check
+        run: conftest test plan.json --policy ../03-policy-as-code/policies/ --all-namespaces
+        working-directory: 01-provision
+
+      - name: Comment result on PR
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '## Policy Check Failed\nThe Terraform plan contains a compliance violation.\nCheck the **Plan + Policy Check** job for details.'
+            })
+
+  # ── On merge to main: apply ───────────────────────────────────────────────
+
+  apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init -input=false
+        working-directory: 01-provision
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -input=false -var="allowed_ssh_cidr=${{ secrets.ALLOWED_SSH_CIDR }}"
+        working-directory: 01-provision
+
+  # ── Scheduled: drift detection ────────────────────────────────────────────
+
+  drift-detection:
+    name: Drift Detection
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_CI_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init -input=false
+        working-directory: 01-provision
+
+      - name: Check for drift
+        id: drift
+        run: |
+          bash ../02-drift-detection/drift-check.sh
+        working-directory: 01-provision
+        continue-on-error: true
+
+      - name: Open GitHub Issue if drift detected
+        if: steps.drift.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[DRIFT] Infrastructure drift detected — ${new Date().toISOString().split('T')[0]}`,
+              body: `## Infrastructure Drift Detected\n\nThe scheduled drift check found differences between the Terraform state and real AWS infrastructure.\n\n**Action required:** Review and either:\n- Run \`terraform apply\` to restore the declared state, or\n- Update the Terraform code to reflect the intentional change\n\nSee the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for the full diff.`,
+              labels: ['drift', 'infrastructure']
+            })

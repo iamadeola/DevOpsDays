@@ -1,0 +1,25 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+plan.bin
+plan.json
+drift.plan
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Variable files may contain sensitive values (IP addresses, etc.)
+*.tfvars
+*.tfvars.json
+
+# Crash log
+crash.log
+crash.*.log
+
+# OS
+.DS_Store
+Thumbs.db
