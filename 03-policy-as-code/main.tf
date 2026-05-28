@@ -98,7 +98,7 @@ resource "aws_security_group" "ec2" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]   # ← VIOLATION — change to YOUR_IP/32 to fix
+    cidr_blocks = [var.allowed_ssh_cidr]
   }
 
   egress {
@@ -109,8 +109,9 @@ resource "aws_security_group" "ec2" {
   }
 
   tags = {
-    Name      = "devopsday-ec2-sg-lab3"
-    ManagedBy = "terraform"
+    Name        = "devopsday-ec2-sg-lab3"
+    ManagedBy   = "terraform"
+    Environment = "workshop"
   }
 }
 
@@ -139,7 +140,8 @@ resource "aws_instance" "demo" {
   associate_public_ip_address = true
 
   tags = {
-    Name      = "devopsday-demo-lab3"
-    ManagedBy = "terraform"
+    Name        = "devopsday-demo-lab3"
+    ManagedBy   = "terraform"
+    Environment = "workshop"
   }
 }

@@ -102,8 +102,9 @@ resource "aws_security_group" "ec2" {
   }
 
   tags = {
-    Name      = "devopsday-ec2-sg"
-    ManagedBy = "terraform"
+    Name        = "devopsday-ec2-sg"
+    ManagedBy   = "terraform"
+    Environment = "workshop"
   }
 }
 
@@ -126,14 +127,15 @@ data "aws_ami" "amazon_linux" {
 
 resource "aws_instance" "demo" {
   ami                         = data.aws_ami.amazon_linux.id
-  instance_type               = "t2.micro"
+  instance_type               = "t3.micro"
   subnet_id                   = aws_subnet.public.id
   vpc_security_group_ids      = [aws_security_group.ec2.id]
   associate_public_ip_address = true
   key_name                    = var.key_pair_name != "" ? var.key_pair_name : null
 
   tags = {
-    Name      = "devopsday-demo"
-    ManagedBy = "terraform"
+    Name        = "devopsday-demo"
+    ManagedBy   = "terraform"
+    Environment = "workshop"
   }
 }

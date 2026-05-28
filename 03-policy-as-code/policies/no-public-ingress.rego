@@ -50,6 +50,33 @@ warn contains msg if {
 	)
 }
 
+# SSH must be locked to a single host — /32 for IPv4, /128 for IPv6
+deny contains msg if {
+	sg := planned_security_groups[_]
+	rule := sg.change.after.ingress[_]
+	port := numbers.range(rule.from_port, rule.to_port)[_]
+	port == 22
+	cidr := rule.cidr_blocks[_]
+	not endswith(cidr, "/32")
+	msg := sprintf(
+		"[SG-003] Security group '%s' allows SSH from '%s'. SSH source must be a single host (/32).",
+		[sg.address, cidr],
+	)
+}
+
+deny contains msg if {
+	sg := planned_security_groups[_]
+	rule := sg.change.after.ingress[_]
+	port := numbers.range(rule.from_port, rule.to_port)[_]
+	port == 22
+	cidr := rule.ipv6_cidr_blocks[_]
+	not endswith(cidr, "/128")
+	msg := sprintf(
+		"[SG-003] Security group '%s' allows SSH from '%s'. SSH source must be a single host (/128).",
+		[sg.address, cidr],
+	)
+}
+
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 planned_security_groups contains resource if {
