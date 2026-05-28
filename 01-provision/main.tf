@@ -102,8 +102,9 @@ resource "aws_security_group" "ec2" {
   }
 
   tags = {
-    Name      = "devopsday-ec2-sg"
-    ManagedBy = "terraform"
+    Name        = "devopsday-ec2-sg"
+    ManagedBy   = "terraform"
+    Environment = "workshop"
   }
 }
 
@@ -133,7 +134,8 @@ resource "aws_instance" "demo" {
   key_name                    = var.key_pair_name != "" ? var.key_pair_name : null
 
   tags = {
-    Name      = "devopsday-demo"
-    ManagedBy = "terraform"
+    Name        = "devopsday-demo"
+    ManagedBy   = "terraform"
+    Environment = "workshop"
   }
 }
